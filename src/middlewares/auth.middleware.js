@@ -1,7 +1,7 @@
 import { ApiError } from "../utils/apiError.js";
-import { asyncHandler } from "../utils/asynchandler.js";
+import asyncHandler from "../utils/asyncHandler.js";
 import jwt from "jsonwebtoken";
-import { User } from "../models/user.model.js";
+import { User } from "../models/user.models.js";
 export const verifyJWT = asyncHandler(async (req, _, next) => {
   // as it is an middleware
   // if the res is not used then we can use _ as a placeholder

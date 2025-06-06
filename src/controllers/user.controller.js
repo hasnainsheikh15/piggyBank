@@ -1,6 +1,8 @@
 import { ApiResponse } from "../utils/apiResponse.js";
 import asyncHandler from "../utils/asyncHandler.js";
 import { User } from "../models/user.models.js";
+import { sendEmail } from "../utils/sendEmail.js";
+import { ApiError } from "../utils/apiError.js";
 
 const registerUser = asyncHandler(async (req, res) => {
   const { name, username, email, phone, password, dateOfBirth } = req.body;
@@ -60,49 +62,90 @@ const generateAccessAndRefreshToken = async (userId) => {
   }
 };
 
-const loginUser = asyncHandler(async (req, res) => {
-  const { username, password } = req.body;
+const sendOtp = asyncHandler(async (req, res) => {
+  const { email, password } = req.body;
 
-  if (!username || !password) {
-    return res
-      .status(400)
-      .json(new ApiResponse(400, null, "Username and password are required"));
+  if (!(email || password)) {
+    throw new ApiResponse(400, null, "Email and password are required");
   }
 
-  const user = await User.findOne({
-    $or: [{ username }, { password }],
-  });
+  const user = await User.findOne({ email });
 
   if (!user) {
-    return res
-      .status(400)
-      .json(new ApiResponse(400, null, "Invalid username or password"));
+    throw new ApiResponse(404, null, "User not found");
   }
 
-  const isPasswordCorrect = await user.isPasswordMatch(password);
-  if (!isPasswordCorrect) {
-    return res
-      .status(400)
-      .json(new ApiResponse(400, null, "Invalid  password"));
+  const isPasswordValid = await user.isPasswordMatch(password);
+  if (!isPasswordValid) {
+    throw new ApiResponse(401, null, "Invalid password");
   }
 
-  const {accessToken,refreshToken} = await generateAccessAndRefreshToken(user._id);
+  const otp = Math.floor(100000 + Math.random() * 900000).toString(); // Generate a 6-digit OTP
 
-  const loggedInUser = await User.findById(user._id).select("-password -refreshToken");
+  const otpExpiry = new Date(Date.now() + 5 * 60 * 1000);
 
-  const options = {
-    httpOnly : true,
-    secure : true
-  }
+  user.otp = otp;
+  user.otpExpiry = otpExpiry;
 
-  return res.status(200).cookie("refreshToken",refreshToken,options).cookie("accessToken",accessToken,options).json(new ApiResponse(200,{
-    user: loggedInUser,
-    accessToken,
-    refreshToken,
+  await user.save({ validateBeforeSave: false });
 
-  }, "User logged in successfully"));
+  await sendEmail({
+    to: user.email,
+    subject: "Your OTP Code",
+    text: `Your OTP code is ${otp}. It is valid for 5 minutes.`,
+  });
 
-
+  return res
+    .status(200)
+    .json(new ApiResponse(200, null, "OTP sent successfully"));
 });
 
-export { registerUser ,generateAccessAndRefreshToken, loginUser };
+const verifyLogin = asyncHandler(async (req, res) => {
+  const { email, otp } = req.body;
+
+  if (!(email || otp)) {
+    throw new ApiError(400, "Email and OTP are required");
+  }
+
+  const user = await User.findOne({ email });
+
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+
+  if (user.otp !== otp || user.otpExpiry < Date.now()) {
+    throw new ApiError(401, "Invalid or expired OTP");
+  }
+
+  user.otp = undefined;
+  user.otpExpiry = undefined;
+
+  await user.save({ validateBeforeSave: false });
+
+  const { accessToken, refreshToken } = await generateAccessAndRefreshToken(
+    user._id
+  );
+
+  const loggedInUser = await User.findById(user._id).select(
+    "-password  -refreshToken  -otp  -optExpiry"
+  );
+
+  const option = {
+    httpOnly: true,
+    secure: true,
+  };
+
+  return res
+    .status(200)
+    .cookie("refreshToken", refreshToken, option)
+    .cookie("accessToken", accessToken, option)
+    .json(
+      new ApiResponse(
+        200,
+        { user: loggedInUser, accessToken, refreshToken },
+        "Login successful"
+      )
+    );
+});
+
+export { registerUser, generateAccessAndRefreshToken, sendOtp , verifyLogin };

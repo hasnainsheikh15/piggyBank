@@ -117,8 +117,8 @@ const verifyLogin = asyncHandler(async (req, res) => {
     throw new ApiError(401, "Invalid or expired OTP");
   }
 
-  user.otp = undefined;
-  user.otpExpiry = undefined;
+  user.otp = null;
+  user.otpExpiry = null;
 
   await user.save({ validateBeforeSave: false });
 
@@ -148,4 +148,18 @@ const verifyLogin = asyncHandler(async (req, res) => {
     );
 });
 
-export { registerUser, generateAccessAndRefreshToken, sendOtp , verifyLogin };
+const userDetails = asyncHandler(async(req,res) => {
+  const {userId} = req.params;
+  if (!userId) {
+    throw new ApiError(400, "User ID is required");
+  }
+  const user = await User.findById(userId).select("-password -refreshToken");
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+  return res
+    .status(200)
+    .json(new ApiResponse(200, user, "User details retrieved successfully"));
+})
+
+export { registerUser, generateAccessAndRefreshToken, sendOtp, verifyLogin , userDetails };

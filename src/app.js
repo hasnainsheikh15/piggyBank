@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import userRoute from "./routes/user.routes.js";
+import gullakRoute from "./routes/gullak.routes.js";
 const app = express();
 app.use(
   cors({
@@ -20,5 +21,6 @@ app.use(cookieParser());
 //controllers routes 
 
 app.use("/api/v2/users",userRoute);
+app.use("/api/v2/gullak",gullakRoute)
 
 export default app;
